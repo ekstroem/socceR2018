@@ -174,13 +174,13 @@ play_game <- function(team_data, team1, team2, musthavewinner=FALSE, ...) {
 
   ## Skellam distribution
   ## Uncomment the code below to use the skellam model
-  #p1 <- .91/team_data$rating[team1]
-  #p2 <- .91/team_data$rating[team2]
-  #prob <- p1 / (p1 + p2)
-  #lambdaA <- FindParameter(prob)
-  #Agoals <- rpois(length(prob), lambdaA)
-  #Bgoals <- rpois(length(prob), normalgoals-lambdaA)
-  #result <- cbind(Agoals, Bgoals)
+  p1 <- .91/team_data$rating[team1]
+  p2 <- .91/team_data$rating[team2]
+  prob <- p1 / (p1 + p2)
+  lambdaA <- FindParameter(prob)
+  Agoals <- rpois(length(prob), lambdaA)
+  Bgoals <- rpois(length(prob), normalgoals-lambdaA)
+  result <- cbind(Agoals, Bgoals)
   
   ## ELO version (no update here). Using sapply here instead of
   ## vectorization in case the elo ranking should be updated after each match.
@@ -310,7 +310,7 @@ simulate_tournament <- function(n=10,
 
 Now we can simulate the tournament
 ```{r}
-result <- simulate_tournament(100)  # Run 100 world cups
+result <- simulate_tournament(10000)  # Run 100 world cups
 
 ```
 
@@ -340,11 +340,12 @@ logloss_score <- function(trueranking, matrix_prediction,
                           weights=c(1, 1, 2, 2, 4, 4, 4, 4,
                                     8,8,8,8,8,8,8,8,
                                     rep(16, 16)),
-                          threshold=1e-15) {
+                          threshold=1/64) {
   ## Minimal sanity check
   stopifnot(length(trueranking)==32)
   
   rank_group <- c(1, 2, 3, 4, rep(5, 4), rep(6, 8), rep(7, 16))
+  rank_group_size <- c(1, 1, 1, 1, 4, 8, 16)
   
   comb <- rbind(c(1, rep(0, 31)),
         c(0, 1, rep(0, 30)),
@@ -357,6 +358,11 @@ logloss_score <- function(trueranking, matrix_prediction,
 
   condensed_prediction_matrix <- comb %*% matrix_prediction
   
+  print(cbind(rank_group, trueranking,
+    log(pmin(pmax(condensed_prediction_matrix[cbind(rank_group, trueranking)], 
+                    threshold), 
+               1-threshold))))
+  
   sum(log(pmin(pmax(condensed_prediction_matrix[cbind(rank_group, trueranking)], 
                     threshold), 
                1-threshold))/weights)
@@ -364,7 +370,8 @@ logloss_score <- function(trueranking, matrix_prediction,
 }
 
 ## Here's an example of calculating with weighted loss
-logloss_score(1:32, prediction_matrix)
+logloss_score(sample(1:32), prediction_matrix)
+logloss_score(c(17, 8, 21, 1:7, 9:16, 18:20, 22:32), prediction_matrix)
 
 ```
 
