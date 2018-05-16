@@ -1,0 +1,372 @@
+---
+title: Who can best predict the result of the 2018 World Cup?
+---
+
+
+# Initialization
+
+First we load some of the packages that are needed and set some global parameters. 
+
+```{r message=FALSE}
+library("dplyr")
+library("magrittr")
+library("ggplot2")
+
+normalgoals <- 2.75  # The average number of goals scored in a world cup match
+```
+
+Now we include two datasets that are needed in the following. 
+
+The first `team_data` contains information about the teams in the world cup. You are welcome to add more columns to this data frame but things might get messed up if you remove any of the ones listed below. If you want to add extra information about each team to use when determining the outcome of a match then add it here.
+
+The `group_match_data` data frame contains information about the game plan. Which teams are playing and when. This should not really be modified as it should represent the actual tournament.
+
+```{r}
+## This data frams contains information about the teams.
+## You are free to add information here that you can use when determining winners
+team_data <- tibble(
+  number = 1:32,
+  name = c("Egypt","Russia","Saudi Arabia","Uruguay",
+           "Iran","Morocco","Portugal","Spain",
+           "Australia","Denmark","France","Peru",
+           "Argentina","Croatia","Iceland","Nigeria",
+           "Brazil","Costa Rica","Switzerland","Serbia",
+           "Germany","South Korea","Mexico","Sweden",
+           "Belgium","England","Panama","Tunisia",
+           "Colombia","Japan","Poland","Senegal"),
+  group = rep(LETTERS[1:8], each=4),
+  rating = c(151, 41, 1001, 34,
+             501, 501, 26, 7,
+             301, 101, 7.5, 201,
+             10, 34, 201, 201,
+             5, 501, 101, 201,
+             5.5, 751, 101, 151,
+             12, 19, 1001, 751,
+             41, 301, 51, 201),
+  elo = c(1646, 1685, 1582, 1890, # From https://www.eloratings.net/, May 12th
+          1793, 1711, 1975, 2048,
+          1714, 1843, 1984, 1906,
+          1985, 1853, 1787, 1699,
+          2131, 1745, 1879, 1770,
+          2092, 1746, 1859, 1796,
+          1931, 1941, 1669, 1649,
+          1935, 1693, 1831, 1747)
+)
+
+group_match_data <- read.csv(text=
+"team1,team2,date,goals1,goals2
+Russia,Saudi Arabia,14/06/2018,,
+Egypt,Uruguay,15/06/2018,,
+Morocco,Iran,15/06/2018,,
+Portugal,Spain,15/06/2018,,
+France,Australia,16/06/2018,,
+Argentina,Iceland,16/06/2018,,
+Peru,Denmark,16/06/2018,,
+Croatia,Nigeria,16/06/2018,,
+Costa Rica,Serbia,17/06/2018,,
+Germany,Mexico,17/06/2018,,
+Brazil,Switzerland,17/06/2018,,
+Sweden,South Korea,18/06/2018,,
+Belgium,Panama,18/06/2018,,
+Tunisia,England,18/06/2018,,
+Colombia,Japan,19/06/2018,,
+Poland,Senegal,19/06/2018,,
+Russia,Egypt,19/06/2018,,
+Portugal,Morocco,20/06/2018,,
+Uruguay,Saudi Arabia,20/06/2018,,
+Iran,Spain,20/06/2018,,
+Denmark,Australia,21/06/2018,,
+France,Peru,21/06/2018,,
+Argentina,Croatia,21/06/2018,,
+Brazil,Costa Rica,22/06/2018,,
+Nigeria,Iceland,22/06/2018,,
+Serbia,Switzerland,22/06/2018,,
+Belgium,Tunisia,23/06/2018,,
+South Korea,Mexico,23/06/2018,,
+Germany,Sweden,23/06/2018,,
+England,Panama,24/06/2018,,
+Japan,Senegal,24/06/2018,,
+Poland,Colombia,24/06/2018,,
+Saudi Arabia,Egypt,25/06/2018,,
+Uruguay,Russia,25/06/2018,,
+Iran,Portugal,25/06/2018,,
+Spain,Morocco,25/06/2018,,
+Australia,Peru,26/06/2018,,
+Denmark,France,26/06/2018,,
+Nigeria,Argentina,26/06/2018,,
+Iceland,Croatia,26/06/2018,,
+Mexico,Sweden,27/06/2018,,
+South Korea,Germany,27/06/2018,,
+Serbia,Brazil,27/06/2018,,
+Switzerland,Costa Rica,27/06/2018,,
+England,Belgium,28/06/2018,,
+Senegal,Colombia,28/06/2018,,
+Panama,Tunisia,28/06/2018,,
+Japan,Poland,28/06/2018,,
+",header=TRUE)
+```
+
+
+
+## Skellam distribution 
+
+All of this section is irrelevant and it is used to compute match results using a Skellam distribution (difference of Poissons) when there is a restriction on the parameters based on the skill levels of the teams. Disregard this at first
+
+```{r skellam}
+dskellam <- function(x, mu1, mu2) {
+  return(exp(-(mu1+mu2))*(mu1/mu2)^(x/2)*besselI(2*sqrt(mu1*mu2),nu=x)
+         )
+}
+
+
+eta <- 2.75
+beta1 <- seq(0.05, eta-0.05, 0.05)
+
+
+
+skellam <- rep(0, length(beta1))
+counter <- 1
+for (i in beta1) {
+  
+  # Udregn ssh for at hold 1 vinder
+  skellam[counter] <- sum(dskellam(1:12, i, eta-i)) / ( sum(dskellam(seq(-10,10,1), i, eta-i)) - dskellam(0, i, eta-i) )
+  counter <- counter+1
+}
+
+skellam <- data.frame(beta=beta1, prob=skellam)
+
+
+FindParameter <- function(prob) {
+      sapply(prob, function(i) {
+                 if (i<.009) {
+                     return (.1)
+                 }
+                 if (i>.995) {
+                       return (eta-.05)
+                 }
+               return(min(skellam$beta[skellam$prob>i]))
+           })
+}
+
+```
+
+
+# Play game
+
+This function is the **most important** to modify as it is the one that determines the outcome (a vector of length 2) of goals scored for each team. This is the function to modify and where you should add your own model for predicting the outcome of a single match. It can use the `team_data` from above and `team1` and `team2` include vectors of the teams numbers that are playing against each other. `play_game` should return a matrix with dimensions `length(team1)` x `2` with the goals scored by each team.
+
+```{r}
+# Input: First three arguments are fixed. Default values are given
+# Returns: a matrix with length(team1) rows 
+# and 2 columns with goals
+play_game <- function(team_data, team1, team2, musthavewinner=FALSE, ...) {
+  # Sanity checks
+  if (length(team1) != length(team2))
+    stop("Lengths of team should be the same")
+  
+  if (any(team1==team2))
+    stop("A team cannot play against itself")
+
+  ## Simplest version. 
+  ## All teams are equal
+  result <- cbind(rpois(length(team1), lambda=normalgoals/2), 
+                  rpois(length(team1), lambda=normalgoals/2))
+
+  ## Skellam distribution
+  ## Uncomment the code below to use the skellam model
+  #p1 <- .91/team_data$rating[team1]
+  #p2 <- .91/team_data$rating[team2]
+  #prob <- p1 / (p1 + p2)
+  #lambdaA <- FindParameter(prob)
+  #Agoals <- rpois(length(prob), lambdaA)
+  #Bgoals <- rpois(length(prob), normalgoals-lambdaA)
+  #result <- cbind(Agoals, Bgoals)
+  
+  ## ELO version (no update here). Using sapply here instead of
+  ## vectorization in case the elo ranking should be updated after each match.
+  # Uncomment below to use the ELO model
+#  result <- t(sapply(seq_len(length(team1)), function(i) {
+#                          AWinProb <- 1/(1 + 10^((team_data$elo[team2[i]] - team_data$elo[team1[i]])/400))
+#                          myres <- rbinom(1, size=1, prob=AWinProb)
+#                              fakegoals <- c(1,0)  
+#                              if (myres==0)
+#                                fakegoals <- c(0,1)
+#                              fakegoals
+#                             }))
+
+  # If we MUST have a winner then one simple trick is to add a random goal 
+  # to one of the two teams that have the same score. Penalty goals seem rather 
+  # random anyway
+  if (musthavewinner) {
+    result[result[,1]==result[,2],1] + 2*rbinom(sum(result[,1]==result[,2]), size=1, prob=.5) - 1
+    
+  }
+  result
+}
+```
+
+
+# Helper functions
+
+The following chunk contains helper functions to run the simulations and find the winners at various stages.
+
+```{r}
+find_group_winners <- function(team_data, group_match_data) {
+
+  ## Create a copy of the the matches that we can fill out
+  group_match_results <- group_match_data
+
+  ## Simulate each match that hasn't already been played  
+  pick <- (!complete.cases(group_match_results[c("goals1", "goals2")]))
+  group_results <- play_game(team_data, 
+                             team_data$number[match(group_match_data$team1, team_data$name)],
+                             team_data$number[match(group_match_data$team2, team_data$name)],
+                             musthavewinner = FALSE)
+
+  ## Now add the results (the goals) to the match resuls
+  group_match_results[, c("goals1", "goals2")] <- group_results
+  ## Compute points earned per team for each match
+  group_match_results$pointsForA <- with(group_match_results, 3*(goals1>goals2)+1*(goals1==goals2))
+  group_match_results$pointsForB <- with(group_match_results, 3*(goals1<goals2)+1*(goals1==goals2))
+
+
+  ## Okay the casing is a bit of a mess here. I do apologize.
+  team_data$points <- 
+  sapply(team_data$name, function(i) { sum(group_match_results[c("pointsForA", "pointsForB")][i == group_match_data[c("team1","team2")]]) })
+  team_data$goalsFore <- sapply(team_data$name, function(i) { sum(group_match_results[c("goals1", "goals2")][i == group_match_data[c("team1","team2")]]) })
+
+  team_data$goalsAgainst <- sapply(team_data$name, function(i) { sum(group_match_results[c("goals2", "goals2")][i == group_match_data[c("team1","team2")]]) })
+  
+  team_data$goalsDifference <- team_data$goalsFore-team_data$goalsAgainst
+
+
+  # And here we find the winners within each group
+  team_data %>% 
+    group_by(group) %>% 
+    arrange(desc(points), desc(goalsDifference), desc(goalsFore)) %>% 
+    mutate(groupRank = row_number()) %>% 
+    ungroup() %>%
+    arrange(group, groupRank)
+}
+
+
+find_knockout_winners <- function(team_data, match_data) {
+  ## Get the results
+  results <- play_game(team_data, match_data[,1], match_data[,2], musthavewinner=TRUE)
+  ## Find the teams that won
+  winners <- match_data[cbind(seq(nrow(results)), ifelse(results[,1]>results[,2], 1, 2))]
+  winners
+}
+
+
+
+simulate_tournament <- function(n=10,
+                                teams=team_data, 
+                                group_matches=group_match_data) {
+  
+  
+  sapply(1:n, function(matchnumber) {
+    
+  ## Step 1: Find the results from the group matcges
+  group_results <- find_group_winners(team_data=teams, group_matches)
+  
+  ## Step 2: Design matches for the first part of the knockout match
+  eigth_matches <- cbind(group_results$number[seq(1, 32, by=4)], group_results$number[c(6, 2, 14, 10, 22, 18, 30, 26)])
+  ## and find the results
+  eigth_winners <- find_knockout_winners(team_data, eigth_matches)
+
+  ## Step 3: Design matches for the quarter finals and run them
+  quarter_matches <- cbind(eigth_winners[c(1, 2, 5, 6)], eigth_winners[c(3, 4, 7, 8)])
+  quarter_winners <- find_knockout_winners(team_data, quarter_matches)
+
+  ## Step 4: Semi finals ... yada yada yada
+  semi_matches <- cbind(quarter_winners[c(1,3)], quarter_winners[c(2,4)])
+  semi_winners <- find_knockout_winners(team_data, semi_matches)
+
+  ## Steps 5 and 6 Find number 1-4
+  bronze_match <- matrix(quarter_winners[!quarter_winners %in% semi_winners], ncol=2)
+  bronze_winner <- find_knockout_winners(team_data, bronze_match)
+
+  final_match <- matrix(semi_winners, ncol=2)
+  final_result <- find_knockout_winners(team_data, final_match)
+
+  ## Return a vector with the teams in ranked order. 
+  ## Note only the first 4 are individuals - the rest are really groups
+  final_ranking <- c(final_result, # Number 1
+                     final_match[!(final_match %in% final_result)], #2
+                     bronze_winner, # Number 3
+                     bronze_match[!(bronze_match %in% bronze_winner)], #4
+                     quarter_matches[!(quarter_matches %in% quarter_winners)], # 5-8
+                     eigth_matches[!(eigth_matches %in% eigth_winners)], # 9-16
+                     seq(32)[!(seq(32) %in% eigth_matches)]
+                   )
+ 
+  final_ranking 
+  })
+}
+```
+
+# Run the tournament
+
+Now we can simulate the tournament
+```{r}
+result <- simulate_tournament(100)  # Run 100 world cups
+
+```
+
+Then we can get a list of winners (and the probabilities of winning the full tournament:
+
+```{r}
+winner <- table(result[1,])
+names(winner) <- team_data$name[match(names(winner), team_data$number)]
+winner/sum(winner)*100
+```
+
+To compute the log-loss we first need a 32x32 matrix with rankings (rows) and countries (columns). Note that each row and column add to 1
+
+```{r}
+# Ranks are rows, columns are countries
+prediction_matrix <- sapply(1:32, function(i) {rowMeans(result==i)})
+prediction_matrix
+```
+
+
+The `logloss_score` function accepts a vector of length 32 of the true rankings (the `trueranking` argument) which we can only fill in after July 15th when the world cup is over. If team 1 won, team 2 became second etc, then `trueranking=1:32`. The argument `matrix_prediction` is the prediction matrix computed above with the probabilities for each rank and each country. 
+
+The function automatically groups the ranks into fewer groups since we cannot differentiate between ranks 5-8, 9-16, and 17-32.
+
+```{r}
+logloss_score <- function(trueranking, matrix_prediction, 
+                          weights=c(1, 1, 2, 2, 4, 4, 4, 4,
+                                    8,8,8,8,8,8,8,8,
+                                    rep(16, 16)),
+                          threshold=1e-15) {
+  ## Minimal sanity check
+  stopifnot(length(trueranking)==32)
+  
+  rank_group <- c(1, 2, 3, 4, rep(5, 4), rep(6, 8), rep(7, 16))
+  
+  comb <- rbind(c(1, rep(0, 31)),
+        c(0, 1, rep(0, 30)),
+        c(0, 0, 1, rep(0, 29)),
+        c(0, 0, 0, 1, rep(0, 28)),
+        c(rep(0, 4), rep(1, 4), rep(0, 24)),
+        c(rep(0, 8), rep(1, 8), rep(0, 16)),
+        c(rep(0:1, times=c(16, 16)))
+        )
+
+  condensed_prediction_matrix <- comb %*% matrix_prediction
+  
+  sum(log(pmin(pmax(condensed_prediction_matrix[cbind(rank_group, trueranking)], 
+                    threshold), 
+               1-threshold))/weights)
+  
+}
+
+## Here's an example of calculating with weighted loss
+logloss_score(1:32, prediction_matrix)
+
+```
+
+
+# Enjoy!
