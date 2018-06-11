@@ -43,7 +43,7 @@ team_data <- tibble(
              5.5, 751, 101, 151,
              12, 19, 1001, 751,
              41, 301, 51, 201),
-  elo = c(1646, 1685, 1582, 1890, # From https://www.eloratings.net/, May 12th
+  elo = c(1646, 1685, 1582, 1890, # From https://www.eloratings.net/, May 12th 2018
           1793, 1711, 1975, 2048,
           1714, 1843, 1984, 1906,
           1985, 1853, 1787, 1699,
@@ -123,12 +123,11 @@ eta <- 2.75
 beta1 <- seq(0.05, eta-0.05, 0.05)
 
 
-
 skellam <- rep(0, length(beta1))
 counter <- 1
 for (i in beta1) {
   
-  # Udregn ssh for at hold 1 vinder
+  # Compute probability that team 1 wins
   skellam[counter] <- sum(dskellam(1:12, i, eta-i)) / ( sum(dskellam(seq(-10,10,1), i, eta-i)) - dskellam(0, i, eta-i) )
   counter <- counter+1
 }
@@ -153,7 +152,7 @@ FindParameter <- function(prob) {
 
 # Play game
 
-This function is the **most important** to modify as it is the one that determines the outcome (a vector of length 2) of goals scored for each team. This is the function to modify and where you should add your own model for predicting the outcome of a single match. It can use the `team_data` from above and `team1` and `team2` include vectors of the teams numbers that are playing against each other. `play_game` should return a matrix with dimensions `length(team1)` x `2` with the goals scored by each team.
+This function is the **most important** to modify as it is the one that determines the outcome (a vector of length 2) of goals scored for each team. **This** is the function to modify and where you should add your own model for predicting the outcome of a single match. It can use the `team_data` from above and `team1` and `team2` include vectors of the team numbers that are playing against each other. `play_game` should return a matrix with dimensions `length(team1)` x `2` with the goals scored by each team.
 
 ```{r}
 # Input: First three arguments are fixed. Default values are given
@@ -280,7 +279,7 @@ simulate_tournament <- function(n=10,
   quarter_winners <- find_knockout_winners(team_data, quarter_matches)
 
   ## Step 4: Semi finals ... yada yada yada
-  semi_matches <- cbind(quarter_winners[c(1,3)], quarter_winners[c(2,4)])
+  semi_matches <- cbind(quarter_winners[c(1,2)], quarter_winners[c(3,4)])
   semi_winners <- find_knockout_winners(team_data, semi_matches)
 
   ## Steps 5 and 6 Find number 1-4
@@ -310,7 +309,7 @@ simulate_tournament <- function(n=10,
 
 Now we can simulate the tournament
 ```{r}
-result <- simulate_tournament(10000)  # Run 100 world cups
+result <- simulate_tournament(10000)  # Run 10000 world cups
 
 ```
 
@@ -319,7 +318,7 @@ Then we can get a list of winners (and the probabilities of winning the full tou
 ```{r}
 winner <- table(result[1,])
 names(winner) <- team_data$name[match(names(winner), team_data$number)]
-winner/sum(winner)*100
+sort(winner/sum(winner)*100, decreasing=TRUE)
 ```
 
 To compute the log-loss we first need a 32x32 matrix with rankings (rows) and countries (columns). Note that each row and column add to 1
