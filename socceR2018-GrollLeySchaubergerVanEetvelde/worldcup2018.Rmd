@@ -1,0 +1,143 @@
+---
+title: Who can best predict the result of the 2018 World Cup?
+---
+# by A. Groll$^{(a)}$, C. Ley$^{(b)}$, G. Schauberger$^{(c)}$ and H. Van Eetvelde$^{(b)}$
+
+(a) Technical University Dortmund
+(b) Ghent University
+(c) Technical University Munich
+
+# Initialization
+
+First we load some of the packages that are needed and set some global parameters. 
+
+```{r message=FALSE}
+library("dplyr")
+library("magrittr")
+library("ggplot2")
+```
+
+We include only one dataset in the following. 
+
+`team_data` contains information about the teams in the world cup. 
+We did all the covariate based modeling already in advance; in order to 
+don't mess things up we didn't remove any of the columns. 
+
+The `group_match_data` is not needed any more, because we have done all the tournament simulation already ina advance in our own R-code. We didn't use the provided code for the tournament simulation, as we have a different strategy to cope with extra time and penalty shoot outs. All details to our modeling strategy can be found in our working paper on arXiv, see https://arxiv.org/pdf/1806.03208.pdf
+
+
+```{r}
+## This data frams contains information about the teams.
+## You are free to add information here that you can use when determining winners
+team_data <- tibble(
+  number = 1:32,
+  name = c("Egypt","Russia","Saudi Arabia","Uruguay",
+           "Iran","Morocco","Portugal","Spain",
+           "Australia","Denmark","France","Peru",
+           "Argentina","Croatia","Iceland","Nigeria",
+           "Brazil","Costa Rica","Switzerland","Serbia",
+           "Germany","South Korea","Mexico","Sweden",
+           "Belgium","England","Panama","Tunisia",
+           "Colombia","Japan","Poland","Senegal"),
+  group = rep(LETTERS[1:8], each=4),
+  rating = c(151, 41, 1001, 34,
+             501, 501, 26, 7,
+             301, 101, 7.5, 201,
+             10, 34, 201, 201,
+             5, 501, 101, 201,
+             5.5, 751, 101, 151,
+             12, 19, 1001, 751,
+             41, 301, 51, 201),
+  elo = c(1646, 1685, 1582, 1890, # From https://www.eloratings.net/, May 12th 2018
+          1793, 1711, 1975, 2048,
+          1714, 1843, 1984, 1906,
+          1985, 1853, 1787, 1699,
+          2131, 1745, 1879, 1770,
+          2092, 1746, 1859, 1796,
+          1931, 1941, 1669, 1649,
+          1935, 1693, 1831, 1747)
+)
+
+```
+
+# Play game
+
+Also this function is irrelevant in our case. We didn't use the provided code for the tournament simulation, as we have a different strategy to cope with extra time and penalty shoot outs.
+
+
+# Helper functions
+
+Also these functions are irrelevant in our case. 
+
+# Run the tournament
+
+Also this function is irrelevant in our case. We have done all our 10000 tournament simulation runs already in advance. So we enter at this point and load here simply our results-matrix:
+
+```{r}
+load(file="results.rda")
+
+```
+
+Then we can get a list of winners (and the probabilities of winning the full tournament:
+
+```{r}
+winner <- table(result[1,])
+names(winner) <- team_data$name[match(names(winner), team_data$number)]
+sort(winner/sum(winner)*100, decreasing=TRUE)
+```
+
+To compute the log-loss we first need a 32x32 matrix with rankings (rows) and countries (columns). Note that each row and column add to 1
+
+```{r}
+# Ranks are rows, columns are countries
+prediction_matrix <- sapply(1:32, function(i) {rowMeans(result==i)})
+prediction_matrix
+```
+
+
+The `logloss_score` function accepts a vector of length 32 of the true rankings (the `trueranking` argument) which we can only fill in after July 15th when the world cup is over. If team 1 won, team 2 became second etc, then `trueranking=1:32`. The argument `matrix_prediction` is the prediction matrix computed above with the probabilities for each rank and each country. 
+
+The function automatically groups the ranks into fewer groups since we cannot differentiate between ranks 5-8, 9-16, and 17-32.
+
+```{r}
+logloss_score <- function(trueranking, matrix_prediction, 
+                          weights=c(1, 1, 2, 2, 4, 4, 4, 4,
+                                    8,8,8,8,8,8,8,8,
+                                    rep(16, 16)),
+                          threshold=1/64) {
+  ## Minimal sanity check
+  stopifnot(length(trueranking)==32)
+  
+  rank_group <- c(1, 2, 3, 4, rep(5, 4), rep(6, 8), rep(7, 16))
+  rank_group_size <- c(1, 1, 1, 1, 4, 8, 16)
+  
+  comb <- rbind(c(1, rep(0, 31)),
+        c(0, 1, rep(0, 30)),
+        c(0, 0, 1, rep(0, 29)),
+        c(0, 0, 0, 1, rep(0, 28)),
+        c(rep(0, 4), rep(1, 4), rep(0, 24)),
+        c(rep(0, 8), rep(1, 8), rep(0, 16)),
+        c(rep(0:1, times=c(16, 16)))
+        )
+
+  condensed_prediction_matrix <- comb %*% matrix_prediction
+  
+  print(cbind(rank_group, trueranking,
+    log(pmin(pmax(condensed_prediction_matrix[cbind(rank_group, trueranking)], 
+                    threshold), 
+               1-threshold))))
+  
+  sum(log(pmin(pmax(condensed_prediction_matrix[cbind(rank_group, trueranking)], 
+                    threshold), 
+               1-threshold))/weights)
+  
+}
+
+## Here's an example of calculating with weighted loss
+logloss_score(sample(1:32), prediction_matrix)
+logloss_score(c(17, 8, 21, 1:7, 9:16, 18:20, 22:32), prediction_matrix)
+
+```
+
+
+# Enjoy!
