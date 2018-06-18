@@ -218,12 +218,13 @@ find_group_winners <- function(team_data, group_match_data) {
   ## Simulate each match that hasn't already been played  
   pick <- (!complete.cases(group_match_results[c("goals1", "goals2")]))
   group_results <- play_game(team_data, 
-                             team_data$number[match(group_match_data$team1, team_data$name)],
-                             team_data$number[match(group_match_data$team2, team_data$name)],
+                             team_data$number[fmatch(group_match_data$team1[pick], team_data$name)],
+                             team_data$number[fmatch(group_match_data$team2[pick], team_data$name)],
                              musthavewinner = FALSE)
 
   ## Now add the results (the goals) to the match resuls
-  group_match_results[, c("goals1", "goals2")] <- group_results
+  group_match_results[pick, c("goals1", "goals2")] <- group_results
+
   ## Compute points earned per team for each match
   group_match_results$pointsForA <- with(group_match_results, 3*(goals1>goals2)+1*(goals1==goals2))
   group_match_results$pointsForB <- with(group_match_results, 3*(goals1<goals2)+1*(goals1==goals2))
@@ -234,7 +235,7 @@ find_group_winners <- function(team_data, group_match_data) {
   sapply(team_data$name, function(i) { sum(group_match_results[c("pointsForA", "pointsForB")][i == group_match_data[c("team1","team2")]]) })
   team_data$goalsFore <- sapply(team_data$name, function(i) { sum(group_match_results[c("goals1", "goals2")][i == group_match_data[c("team1","team2")]]) })
 
-  team_data$goalsAgainst <- sapply(team_data$name, function(i) { sum(group_match_results[c("goals2", "goals2")][i == group_match_data[c("team1","team2")]]) })
+  team_data$goalsAgainst <- sapply(team_data$name, function(i) { sum(group_match_results[c("goals2", "goals1")][i == group_match_data[c("team1","team2")]]) })
   
   team_data$goalsDifference <- team_data$goalsFore-team_data$goalsAgainst
 
